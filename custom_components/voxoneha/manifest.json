@@ -1,12 +1,20 @@
 {
   "domain": "voxoneha",
   "name": "VoxOne",
-  "codeowners": ["@pimowo"],
+  "codeowners": [
+    "@pimowo"
+  ],
   "config_flow": true,
   "documentation": "https://github.com/pimowo/VoxOneHA",
   "iot_class": "local_push",
   "requirements": [],
   "dependencies": [],
   "version": "0.1.0",
-  "homeassistant": "2024.10.0"
+  "homeassistant": "2024.10.0",
+  "zeroconf": [
+    {
+      "type": "_http._tcp.local.",
+      "name": "VoxOne*"
+    }
+  ]
 }

@@ -7,7 +7,7 @@ MANUFACTURER = "VoxOne"
 MODEL = "VoxOne Radio"
 
 # DODANO SENSOR
-PLATFORMS: list[Platform] = [Platform.MEDIA_PLAYER, Platform.SENSOR]
+PLATFORMS: list[Platform] = [Platform.MEDIA_PLAYER, Platform.SENSOR, Platform.BUTTON, Platform.SELECT]
 
 DEFAULT_PORT = 80
 WS_PATH = "/ws"

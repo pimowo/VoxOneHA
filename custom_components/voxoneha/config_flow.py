@@ -9,6 +9,7 @@ from homeassistant import config_entries
 from homeassistant.const import CONF_HOST, CONF_NAME
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.components import zeroconf
 from .const import CONF_PASSWORD, CONF_PORT, CONNECT_TIMEOUT, DEFAULT_PORT, DOMAIN, LOGIN_PATH, SECURITY_STATE_PATH
 
 _LOGGER = logging.getLogger(__name__)
@@ -16,32 +17,24 @@ _LOGGER = logging.getLogger(__name__)
 async def _validate_host(hass, host: str, port: int, password: str | None) -> str | None:
     session = async_get_clientsession(hass)
     base_url = f"http://{host}:{port}"
-    # VoxOne wymaga nagłówka Origin dla zapytań POST (mutacji)
     headers = {"Origin": base_url}
-    
     try:
         async with asyncio.timeout(CONNECT_TIMEOUT):
             async with session.get(f"{base_url}{SECURITY_STATE_PATH}", headers=headers) as resp:
-                if resp.status != 200: 
-                    return "cannot_connect"
+                if resp.status != 200: return "cannot_connect"
                 state = await resp.json()
-            
             if state.get("state") == "protected":
-                if not password: 
-                    return "password_required"
+                if not password: return "password_required"
                 async with session.post(f"{base_url}{LOGIN_PATH}", data={"password": password}, headers=headers) as resp:
-                    if resp.status == 401: 
-                        return "invalid_auth"
-                    elif resp.status != 200: 
-                        return "cannot_connect"
-            elif state.get("state") in ("unconfigured", "locked"): 
-                return "device_unconfigured"
+                    if resp.status == 401: return "invalid_auth"
+                    elif resp.status != 200: return "cannot_connect"
+            elif state.get("state") in ("unconfigured", "locked"): return "device_unconfigured"
             return None
-    except (TimeoutError, aiohttp.ClientError): 
-        return "cannot_connect"
+    except (TimeoutError, aiohttp.ClientError): return "cannot_connect"
 
 class VoxOneConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
+
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         errors: dict[str, str] = {}
         if user_input is not None:
@@ -59,5 +52,33 @@ class VoxOneConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     title=user_input.get(CONF_NAME) or f"VoxOne ({host})",
                     data={CONF_HOST: host, CONF_PORT: port, CONF_PASSWORD: password},
                 )
-        schema = vol.Schema({vol.Required(CONF_HOST): str, vol.Optional(CONF_PORT, default=DEFAULT_PORT): int, vol.Optional(CONF_NAME): str, vol.Optional(CONF_PASSWORD): str})
+        schema = vol.Schema({
+            vol.Required(CONF_HOST): str, 
+            vol.Optional(CONF_PORT, default=DEFAULT_PORT): int, 
+            vol.Optional(CONF_NAME): str, 
+            vol.Optional(CONF_PASSWORD): str
+        })
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
+
+    async def async_step_zeroconf(self, discovery_info: zeroconf.ZeroconfServiceInfo) -> FlowResult:
+        """Handle zeroconf discovery."""
+        host = discovery_info.host
+        port = discovery_info.port or DEFAULT_PORT
+        
+        self._async_abort_entries_match({CONF_HOST: host})
+        
+        self.context["title_placeholders"] = {"name": discovery_info.name.split(".")[0]}
+        self.context["host"] = host
+        self.context["port"] = port
+        return await self.async_step_zeroconf_confirm()
+
+    async def async_step_zeroconf_confirm(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Confirm zeroconf discovery."""
+        if user_input is not None:
+            # Wymuszamy ponowne sprawdzenie, bo moglo sie zmienic IP lub stan
+            return await self.async_step_user(user_input)
+
+        return self.async_show_form(
+            step_id="zeroconf_confirm",
+            description_placeholders={"name": self.context["title_placeholders"]["name"]},
+        )
