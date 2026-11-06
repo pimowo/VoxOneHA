@@ -11,17 +11,18 @@ from typing import Any
 import aiohttp
 import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.components import zeroconf
 from homeassistant.const import CONF_HOST, CONF_NAME
 from homeassistant.core import HomeAssistant
-from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.device_registry import format_mac
+from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
 from .const import (
     CONF_MAC,
+    CONF_MODEL,
     CONF_PASSWORD,
     CONF_PORT,
+    CONF_VERSION,
     CONNECT_TIMEOUT,
     DEFAULT_PORT,
     DOMAIN,
@@ -33,6 +34,19 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 _MAC_PATTERN = re.compile(r"^(?:[0-9a-f]{2}:){5}[0-9a-f]{2}$")
+
+
+def _txt_property(properties: dict[str, Any], key: str) -> str | None:
+    """Return a normalized non-empty Zeroconf TXT value."""
+    value = properties.get(key)
+    if isinstance(value, bytes):
+        try:
+            value = value.decode("utf-8")
+        except UnicodeDecodeError:
+            return None
+    if not isinstance(value, str) or not (value := value.strip()):
+        return None
+    return value
 
 
 def _normalize_mac(mac: object) -> str | None:
@@ -152,7 +166,9 @@ class VoxOneConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     VERSION = 2
 
-    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
         """Handle setup initiated by the user."""
         errors: dict[str, str] = {}
         if user_input is not None:
@@ -194,30 +210,70 @@ class VoxOneConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
 
-    async def async_step_zeroconf(self, discovery_info: zeroconf.ZeroconfServiceInfo) -> FlowResult:
+    async def async_step_zeroconf(
+        self, discovery_info: ZeroconfServiceInfo
+    ) -> config_entries.ConfigFlowResult:
         """Handle zeroconf discovery."""
         host = discovery_info.host
-        self._async_abort_entries_match({CONF_HOST: host})
-        self.context["title_placeholders"] = {"name": discovery_info.name.split(".")[0]}
-        self.context["host"] = host
-        self.context["port"] = discovery_info.port or DEFAULT_PORT
-        return await self.async_step_zeroconf_confirm()
+        port = discovery_info.port or DEFAULT_PORT
+        properties = discovery_info.properties
+        mac = _normalize_mac(_txt_property(properties, CONF_MAC))
+        if mac is None:
+            return self.async_abort(reason="invalid_discovery_info")
+
+        name = _txt_property(properties, CONF_NAME) or discovery_info.name.split(".")[0]
+        model = _txt_property(properties, CONF_MODEL) or "VoxOne"
+        version = _txt_property(properties, CONF_VERSION) or "unknown"
+        discovered_data = {
+            CONF_HOST: host,
+            CONF_PORT: port,
+            CONF_MAC: mac,
+            CONF_NAME: name,
+            CONF_MODEL: model,
+            CONF_VERSION: version,
+        }
+
+        await self.async_set_unique_id(mac)
+        self._abort_if_unique_id_configured(updates=discovered_data)
+
+        self.context.update(
+            {
+                "title_placeholders": {"name": name},
+                "discovered_data": discovered_data,
+            }
+        )
+
+        if error := await _validate_host(self.hass, host, port, None):
+            if error == "password_required":
+                return await self.async_step_zeroconf_confirm()
+            return self.async_abort(reason=error)
+
+        return self.async_create_entry(title=name, data=discovered_data)
 
     async def async_step_zeroconf_confirm(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Confirm a discovered VoxOne device."""
+    ) -> config_entries.ConfigFlowResult:
+        """Collect credentials for a protected discovered VoxOne device."""
+        discovered_data = self.context["discovered_data"]
+        name = discovered_data[CONF_NAME]
+        errors: dict[str, str] = {}
         if user_input is not None:
-            return await self.async_step_user(
-                {
-                    CONF_HOST: self.context["host"],
-                    CONF_PORT: self.context["port"],
-                    CONF_PASSWORD: user_input.get(CONF_PASSWORD),
-                    CONF_NAME: self.context["title_placeholders"]["name"],
-                }
-            )
+            password = user_input.get(CONF_PASSWORD) or None
+            if error := await _validate_host(
+                self.hass,
+                discovered_data[CONF_HOST],
+                discovered_data[CONF_PORT],
+                password,
+            ):
+                errors["base"] = error
+            else:
+                return self.async_create_entry(
+                    title=name,
+                    data={**discovered_data, CONF_PASSWORD: password},
+                )
         return self.async_show_form(
             step_id="zeroconf_confirm",
-            description_placeholders={"name": self.context["title_placeholders"]["name"]},
+            description_placeholders={"name": name},
             data_schema=vol.Schema({vol.Optional(CONF_PASSWORD): str}),
+            errors=errors,
         )

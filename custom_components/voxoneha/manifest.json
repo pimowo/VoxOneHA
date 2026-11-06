@@ -10,10 +10,5 @@
   "issue_tracker": "https://github.com/pimowo/VoxOneHA/issues",
   "requirements": [],
   "version": "0.1.0",
-  "zeroconf": [
-    {
-      "type": "_http._tcp.local.",
-      "name": "voxone*"
-    }
-  ]
+  "zeroconf": ["_voxone._tcp.local."]
 }
