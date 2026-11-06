@@ -5,7 +5,9 @@ from homeassistant.const import Platform
 DOMAIN = "voxoneha"
 MANUFACTURER = "VoxOne"
 MODEL = "VoxOne Radio"
-PLATFORMS: list[Platform] = [Platform.MEDIA_PLAYER]
+
+# DODANO SENSOR
+PLATFORMS: list[Platform] = [Platform.MEDIA_PLAYER, Platform.SENSOR]
 
 DEFAULT_PORT = 80
 WS_PATH = "/ws"
