@@ -1,7 +1,16 @@
 """Data model for VoxOne state."""
+
 from __future__ import annotations
+
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING
+
+from homeassistant.config_entries import ConfigEntry
+
+if TYPE_CHECKING:
+    from .coordinator import VoxOneCoordinator
+    from .websocket_client import VoxOneWebSocketClient
+
 
 @dataclass
 class VoxOneState:
@@ -20,4 +29,15 @@ class VoxOneState:
     mac: str | None = None
     firmware: str | None = None
     uptime: int | None = None
-    raw: dict[str, Any] = field(default_factory=dict)
+    source: str = "radio"
+
+
+@dataclass
+class VoxOneRuntimeData:
+    """Runtime objects owned by a VoxOne config entry."""
+
+    client: VoxOneWebSocketClient
+    coordinator: VoxOneCoordinator
+
+
+type VoxOneConfigEntry = ConfigEntry[VoxOneRuntimeData]

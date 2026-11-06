@@ -1,13 +1,19 @@
 """Constants for the VoxOne integration."""
+
 from __future__ import annotations
+
 from homeassistant.const import Platform
 
 DOMAIN = "voxoneha"
 MANUFACTURER = "VoxOne"
 MODEL = "VoxOne Radio"
 
-# DODANO SENSOR
-PLATFORMS: list[Platform] = [Platform.MEDIA_PLAYER, Platform.SENSOR, Platform.BUTTON, Platform.SELECT]
+PLATFORMS: list[Platform] = [
+    Platform.MEDIA_PLAYER,
+    Platform.SENSOR,
+    Platform.BUTTON,
+    Platform.SELECT,
+]
 
 DEFAULT_PORT = 80
 WS_PATH = "/ws"
@@ -26,3 +32,4 @@ CONF_HOST = "host"
 CONF_PORT = "port"
 CONF_PASSWORD = "password"
 CONF_NAME = "name"
+CONF_MAC = "mac"

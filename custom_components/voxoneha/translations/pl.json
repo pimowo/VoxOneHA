@@ -1,1 +1,56 @@
-{"config":{"step":{"user":{"title":"VoxOne","data":{"host":"Host / IP","port":"Port","name":"Nazwa (opcjonalnie)","password":"Hasło"}}},"error":{"cannot_connect":"Błąd połączenia.","invalid_auth":"Błędne hasło.","password_required":"Wymagane hasło.","device_unconfigured":"Urządzenie nieskonfigurowane."}}}
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "VoxOne",
+        "description": "Podaj adres swojego radia VoxOne.",
+        "data": {
+          "host": "Host / IP",
+          "port": "Port",
+          "name": "Nazwa (opcjonalnie)",
+          "password": "Hasło"
+        }
+      },
+      "zeroconf_confirm": {
+        "title": "Skonfiguruj {name}",
+        "description": "Czy chcesz skonfigurować wykryte radio VoxOne {name}?",
+        "data": {
+          "password": "Hasło"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Błąd połączenia.",
+      "invalid_auth": "Błędne hasło.",
+      "password_required": "Wymagane hasło.",
+      "device_unconfigured": "Urządzenie nieskonfigurowane."
+    }
+  },
+  "entity": {
+    "button": {
+      "restart": {
+        "name": "Uruchom ponownie"
+      }
+    },
+    "select": {
+      "source": {
+        "name": "Źródło",
+        "state": {
+          "radio": "Radio",
+          "bt": "Bluetooth"
+        }
+      }
+    },
+    "sensor": {
+      "rssi": {
+        "name": "Siła sygnału Wi-Fi"
+      },
+      "uptime": {
+        "name": "Czas działania"
+      },
+      "bitrate": {
+        "name": "Przepływność"
+      }
+    }
+  }
+}

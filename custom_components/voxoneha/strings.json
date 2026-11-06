@@ -3,10 +3,54 @@
     "step": {
       "user": {
         "title": "VoxOne",
-        "description": "Podaj adres swojego radia VoxOne.",
-        "data": {"host": "Host / IP", "port": "Port", "name": "Nazwa (opcjonalnie)", "password": "Hasło (jeśli PROTECTED)"}
+        "description": "Enter the address of your VoxOne radio.",
+        "data": {
+          "host": "Host / IP",
+          "port": "Port",
+          "name": "Name (optional)",
+          "password": "Password"
+        }
+      },
+      "zeroconf_confirm": {
+        "title": "Set up {name}",
+        "description": "Do you want to set up the discovered VoxOne radio {name}?",
+        "data": {
+          "password": "Password"
+        }
       }
     },
-    "error": {"cannot_connect": "Błąd połączenia.", "invalid_auth": "Błędne hasło.", "password_required": "Wymagane hasło.", "device_unconfigured": "Urządzenie nieskonfigurowane."}
+    "error": {
+      "cannot_connect": "Cannot connect.",
+      "invalid_auth": "Invalid password.",
+      "password_required": "Password required.",
+      "device_unconfigured": "Device unconfigured."
+    }
+  },
+  "entity": {
+    "button": {
+      "restart": {
+        "name": "Restart"
+      }
+    },
+    "select": {
+      "source": {
+        "name": "Source",
+        "state": {
+          "radio": "Radio",
+          "bt": "Bluetooth"
+        }
+      }
+    },
+    "sensor": {
+      "rssi": {
+        "name": "Wi-Fi RSSI"
+      },
+      "uptime": {
+        "name": "Uptime"
+      },
+      "bitrate": {
+        "name": "Bitrate"
+      }
+    }
   }
 }
