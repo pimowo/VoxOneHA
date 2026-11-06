@@ -1,0 +1,1 @@
+{"config":{"step":{"user":{"title":"VoxOne","data":{"host":"Host / IP","port":"Port","name":"Name (optional)","password":"Password"}}},"error":{"cannot_connect":"Cannot connect.","invalid_auth":"Invalid password.","password_required":"Password required.","device_unconfigured":"Device unconfigured."}}}
