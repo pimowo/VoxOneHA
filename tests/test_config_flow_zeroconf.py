@@ -134,6 +134,7 @@ class ManifestTest(unittest.TestCase):
             (ROOT / "custom_components/voxoneha/manifest.json").read_text()
         )
         self.assertEqual(manifest["zeroconf"], ["_voxone._tcp.local."])
+        self.assertEqual(manifest["version"], "1.1.1")
 
 
 if __name__ == "__main__":

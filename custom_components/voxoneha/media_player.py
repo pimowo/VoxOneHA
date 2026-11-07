@@ -14,6 +14,19 @@ from .coordinator import VoxOneCoordinator
 from .entity import VoxOneEntity
 from .models import VoxOneConfigEntry
 
+SOURCE_RADIO = "Radio"
+SOURCE_BLUETOOTH = "Bluetooth"
+SOURCE_LIST = [SOURCE_RADIO, SOURCE_BLUETOOTH]
+
+_SOURCE_TO_COMMAND = {
+    SOURCE_RADIO.casefold(): "radio",
+    SOURCE_BLUETOOTH.casefold(): "bt",
+}
+_COMMAND_TO_SOURCE = {
+    "radio": SOURCE_RADIO,
+    "bt": SOURCE_BLUETOOTH,
+}
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -30,7 +43,10 @@ class VoxOneMediaPlayer(VoxOneEntity, MediaPlayerEntity):
     _attr_device_class = "speaker"
     _attr_supported_features = (
         MediaPlayerEntityFeature.PLAY
+        | MediaPlayerEntityFeature.PAUSE
         | MediaPlayerEntityFeature.STOP
+        | MediaPlayerEntityFeature.TURN_ON
+        | MediaPlayerEntityFeature.TURN_OFF
         | MediaPlayerEntityFeature.VOLUME_SET
         | MediaPlayerEntityFeature.VOLUME_MUTE
         | MediaPlayerEntityFeature.VOLUME_STEP
@@ -71,30 +87,44 @@ class VoxOneMediaPlayer(VoxOneEntity, MediaPlayerEntity):
 
     @property
     def source(self) -> str | None:
-        """Return the selected station."""
-        return self.coordinator.data.station if self.coordinator.data else None
+        """Return the active VoxOne source."""
+        data = self.coordinator.data
+        if data is None:
+            return None
+        return _COMMAND_TO_SOURCE.get(data.source.casefold())
 
     @property
-    def source_list(self) -> list[str] | None:
-        """Return the available stations."""
-        data = self.coordinator.data
-        return list(data.station_list) if data and data.station_list else None
+    def source_list(self) -> list[str]:
+        """Return the sources exposed by VoxOne."""
+        return list(SOURCE_LIST)
+
+    async def async_turn_on(self) -> None:
+        """Turn on playback."""
+        await self.coordinator.client.send_command("start")
+
+    async def async_turn_off(self) -> None:
+        """Turn off playback."""
+        await self.coordinator.client.send_command("stop")
 
     async def async_media_play(self) -> None:
         """Start playback."""
-        await self.coordinator.client.send_command("start")
+        await self.coordinator.client.send_command("webtransport", "toggle")
+
+    async def async_media_pause(self) -> None:
+        """Pause playback."""
+        await self.coordinator.client.send_command("webtransport", "toggle")
 
     async def async_media_stop(self) -> None:
         """Stop playback."""
         await self.coordinator.client.send_command("stop")
 
     async def async_media_next_track(self) -> None:
-        """Select the next station."""
-        await self.coordinator.client.send_command("next")
+        """Select the next item for the active source."""
+        await self.coordinator.client.send_command("webtransport", "next")
 
     async def async_media_previous_track(self) -> None:
-        """Select the previous station."""
-        await self.coordinator.client.send_command("prev")
+        """Select the previous item for the active source."""
+        await self.coordinator.client.send_command("webtransport", "prev")
 
     async def async_set_volume_level(self, volume: float) -> None:
         """Set volume."""
@@ -115,12 +145,8 @@ class VoxOneMediaPlayer(VoxOneEntity, MediaPlayerEntity):
             await self.async_set_volume_level(max(0.0, self.volume_level - 0.05))
 
     async def async_select_source(self, source: str) -> None:
-        """Select a station by name."""
-        data = self.coordinator.data
-        if data is None or not data.station_list:
-            return
-        try:
-            station_index = data.station_list.index(source) + 1
-        except ValueError:
-            return
-        await self.coordinator.client.send_command("playstation", str(station_index))
+        """Select Radio or Bluetooth as the active VoxOne source."""
+        source_command = _SOURCE_TO_COMMAND.get(source.casefold())
+        if source_command is None:
+            raise ValueError(f"Unsupported VoxOne source: {source}")
+        await self.coordinator.client.send_command("source", source_command)
