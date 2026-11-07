@@ -1,40 +1,30 @@
 """Base entity for VoxOne."""
-
 from __future__ import annotations
-
-from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.device_registry import DeviceInfo, CONNECTION_NETWORK_MAC, format_mac
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-
-from .const import CONF_MAC, DOMAIN, MANUFACTURER, MODEL
+from homeassistant.config_entries import ConfigEntry
+from .const import DOMAIN, MANUFACTURER, MODEL, CONF_MAC
 from .coordinator import VoxOneCoordinator
-from .models import VoxOneConfigEntry
-
 
 class VoxOneEntity(CoordinatorEntity[VoxOneCoordinator]):
-    """Base class for VoxOne entities."""
-
     _attr_has_entity_name = True
 
-    def __init__(
-        self,
-        coordinator: VoxOneCoordinator,
-        entry: VoxOneConfigEntry,
-        suffix: str,
-    ) -> None:
-        """Initialize a VoxOne entity."""
+    def __init__(self, coordinator: VoxOneCoordinator, entry: ConfigEntry, suffix: str, name: str | None = None) -> None:
         super().__init__(coordinator)
-        mac = dr.format_mac(entry.data[CONF_MAC])
-        self._attr_unique_id = f"{mac}_{suffix}"
-        self._attr_device_info = dr.DeviceInfo(
-            identifiers={(DOMAIN, mac)},
-            connections={(dr.CONNECTION_NETWORK_MAC, mac)},
+        self._attr_unique_id = f"{entry.data[CONF_MAC]}_{suffix}"
+        if name is not None:
+            self._attr_name = name
+
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, entry.data[CONF_MAC])},
+            connections={(CONNECTION_NETWORK_MAC, format_mac(entry.data[CONF_MAC]))},
             manufacturer=MANUFACTURER,
             model=MODEL,
             name=entry.title,
-            configuration_url=coordinator.client.base_url,
+            configuration_url=f"http://{coordinator.client.host}:{coordinator.client.port}/",
+            sw_version=coordinator.data.firmware if coordinator.data else None,
         )
 
     @property
     def available(self) -> bool:
-        """Return whether the entity is available."""
         return self.coordinator.client.is_connected and super().available
