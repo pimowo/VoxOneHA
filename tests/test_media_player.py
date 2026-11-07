@@ -42,6 +42,16 @@ class VoxOneMediaPlayerTest(unittest.IsolatedAsyncioTestCase):
         self.coordinator.data.source = "bt"
         self.assertEqual(self.entity.source, "Bluetooth")
 
+    def test_source_list_is_available_while_device_state_is_offline(self) -> None:
+        """HA keeps source capabilities during a temporary state outage."""
+        self.coordinator.data = None
+        self.assertEqual(self.entity.source_list, ["Radio", "Bluetooth"])
+        self.assertEqual(
+            self.entity.capability_attributes["source_list"],
+            ["Radio", "Bluetooth"],
+        )
+        self.assertTrue(self.entity.supported_features & MediaPlayerEntityFeature.SELECT_SOURCE)
+
     async def test_transport_and_power_commands(self) -> None:
         """Media controls use the firmware WebSocket contract."""
         await self.entity.async_media_play()
@@ -57,7 +67,7 @@ class VoxOneMediaPlayerTest(unittest.IsolatedAsyncioTestCase):
                 call("webtransport", "toggle"),
                 call("webtransport", "next"),
                 call("webtransport", "prev"),
-                call("start"),
+                call("webtransport", "toggle"),
                 call("stop"),
             ]
         )

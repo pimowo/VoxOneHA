@@ -99,8 +99,8 @@ class VoxOneMediaPlayer(VoxOneEntity, MediaPlayerEntity):
         return list(SOURCE_LIST)
 
     async def async_turn_on(self) -> None:
-        """Turn on playback."""
-        await self.coordinator.client.send_command("start")
+        """Resume playback for the active source."""
+        await self.coordinator.client.send_command("webtransport", "toggle")
 
     async def async_turn_off(self) -> None:
         """Turn off playback."""
