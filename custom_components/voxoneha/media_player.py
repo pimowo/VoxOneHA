@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
+from typing import Any
+from urllib.parse import urlsplit
+
+from homeassistant.components import media_source
 from homeassistant.components.media_player import (
+    BrowseMedia,
     MediaPlayerEntity,
     MediaPlayerEntityFeature,
     MediaPlayerState,
+    MediaType,
+    async_process_play_media_url,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .coordinator import VoxOneCoordinator
@@ -53,6 +61,8 @@ class VoxOneMediaPlayer(VoxOneEntity, MediaPlayerEntity):
         | MediaPlayerEntityFeature.NEXT_TRACK
         | MediaPlayerEntityFeature.PREVIOUS_TRACK
         | MediaPlayerEntityFeature.SELECT_SOURCE
+        | MediaPlayerEntityFeature.BROWSE_MEDIA
+        | MediaPlayerEntityFeature.PLAY_MEDIA
     )
 
     def __init__(self, coordinator: VoxOneCoordinator, entry: VoxOneConfigEntry) -> None:
@@ -150,3 +160,42 @@ class VoxOneMediaPlayer(VoxOneEntity, MediaPlayerEntity):
         if source_command is None:
             raise ValueError(f"Unsupported VoxOne source: {source}")
         await self.coordinator.client.send_command("source", source_command)
+
+    async def async_browse_media(
+        self,
+        media_content_type: MediaType | str | None = None,
+        media_content_id: str | None = None,
+    ) -> BrowseMedia:
+        """Browse Home Assistant media sources."""
+        return await media_source.async_browse_media(self.hass, media_content_id)
+
+    async def async_play_media(
+        self, media_type: MediaType | str, media_id: str, **kwargs: Any
+    ) -> None:
+        """Resolve and play a temporary HTTP(S) media URL on VoxOne."""
+        if media_source.is_media_source_id(media_id):
+            resolved = await media_source.async_resolve_media(self.hass, media_id, self.entity_id)
+            media_id = resolved.url
+
+        play_url = async_process_play_media_url(self.hass, media_id)
+        try:
+            parsed = urlsplit(play_url)
+            invalid = (
+                parsed.scheme.casefold() not in {"http", "https"}
+                or not parsed.hostname
+                or parsed.username is not None
+                or parsed.password is not None
+                or len(play_url.encode("ascii")) >= 512
+                or any(
+                    ord(character) <= 0x20
+                    or ord(character) >= 0x7F
+                    or character in {"\\", '"', "<", ">"}
+                    for character in play_url
+                )
+            )
+        except (UnicodeEncodeError, ValueError):
+            invalid = True
+        if invalid:
+            raise HomeAssistantError("VoxOne requires a safe HTTP or HTTPS media URL")
+
+        await self.coordinator.client.send_command("playurl", play_url)

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import unittest
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, call
+from unittest.mock import AsyncMock, call, patch
 
 from homeassistant.components.media_player import MediaPlayerEntityFeature
+from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.voxoneha.media_player import VoxOneMediaPlayer
 from custom_components.voxoneha.models import VoxOneState
@@ -20,6 +21,8 @@ class VoxOneMediaPlayerTest(unittest.IsolatedAsyncioTestCase):
         self.coordinator = SimpleNamespace(data=VoxOneState(), client=self.client)
         self.entity = object.__new__(VoxOneMediaPlayer)
         self.entity.coordinator = self.coordinator
+        self.entity.hass = SimpleNamespace()
+        self.entity.entity_id = "media_player.voxone"
 
     def test_supported_features_include_transport_power_source_and_mute(self) -> None:
         """HA receives all controls implemented by the entity."""
@@ -31,6 +34,8 @@ class VoxOneMediaPlayerTest(unittest.IsolatedAsyncioTestCase):
             MediaPlayerEntityFeature.TURN_OFF,
             MediaPlayerEntityFeature.SELECT_SOURCE,
             MediaPlayerEntityFeature.VOLUME_MUTE,
+            MediaPlayerEntityFeature.BROWSE_MEDIA,
+            MediaPlayerEntityFeature.PLAY_MEDIA,
         ):
             self.assertTrue(features & feature)
 
@@ -92,6 +97,80 @@ class VoxOneMediaPlayerTest(unittest.IsolatedAsyncioTestCase):
         """An arbitrary label cannot reach the firmware command channel."""
         with self.assertRaisesRegex(ValueError, "Unsupported VoxOne source"):
             await self.entity.async_select_source("Line in")
+        self.client.send_command.assert_not_awaited()
+
+    async def test_browse_media_uses_home_assistant_media_source(self) -> None:
+        """The entity exposes HA's standard media browser tree."""
+        browse_result = object()
+        with patch(
+            "custom_components.voxoneha.media_player.media_source.async_browse_media",
+            AsyncMock(return_value=browse_result),
+        ) as browse_media:
+            result = await self.entity.async_browse_media("music", "media-source://media")
+
+        self.assertIs(result, browse_result)
+        browse_media.assert_awaited_once_with(self.entity.hass, "media-source://media")
+
+    async def test_play_media_sends_direct_url_to_firmware(self) -> None:
+        """A direct HTTP URL uses the temporary firmware playback command."""
+        url = "https://ha.local:8123/local/announcement.mp3?token=a=b"
+        with (
+            patch(
+                "custom_components.voxoneha.media_player.media_source.is_media_source_id",
+                return_value=False,
+            ),
+            patch(
+                "custom_components.voxoneha.media_player.async_process_play_media_url",
+                return_value=url,
+            ),
+        ):
+            await self.entity.async_play_media("music", url)
+
+        self.client.send_command.assert_awaited_once_with("playurl", url)
+
+    async def test_play_media_resolves_media_source_to_reachable_url(self) -> None:
+        """A media-source identifier is resolved and made reachable by VoxOne."""
+        resolved = SimpleNamespace(url="/api/tts_proxy/voice.mp3")
+        reachable = "http://192.168.1.2:8123/api/tts_proxy/voice.mp3"
+        with (
+            patch(
+                "custom_components.voxoneha.media_player.media_source.is_media_source_id",
+                return_value=True,
+            ),
+            patch(
+                "custom_components.voxoneha.media_player.media_source.async_resolve_media",
+                AsyncMock(return_value=resolved),
+            ) as resolve_media,
+            patch(
+                "custom_components.voxoneha.media_player.async_process_play_media_url",
+                return_value=reachable,
+            ) as process_url,
+        ):
+            await self.entity.async_play_media("music", "media-source://tts/voice")
+
+        resolve_media.assert_awaited_once_with(
+            self.entity.hass,
+            "media-source://tts/voice",
+            "media_player.voxone",
+        )
+        process_url.assert_called_once_with(self.entity.hass, resolved.url)
+        self.client.send_command.assert_awaited_once_with("playurl", reachable)
+
+    async def test_play_media_rejects_unsupported_or_unsafe_url(self) -> None:
+        """Unsupported schemes and command-breaking values never reach VoxOne."""
+        with (
+            patch(
+                "custom_components.voxoneha.media_player.media_source.is_media_source_id",
+                return_value=False,
+            ),
+            patch(
+                "custom_components.voxoneha.media_player.async_process_play_media_url",
+                return_value="file:///tmp/audio.mp3",
+            ),
+            self.assertRaises(HomeAssistantError),
+        ):
+            await self.entity.async_play_media("music", "file:///tmp/audio.mp3")
+
         self.client.send_command.assert_not_awaited()
 
 
