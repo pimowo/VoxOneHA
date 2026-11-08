@@ -46,6 +46,8 @@ class VoxOneMediaPlayerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.entity.source, "Radio")
         self.coordinator.data.source = "bt"
         self.assertEqual(self.entity.source, "Bluetooth")
+        self.coordinator.data.source = "ha"
+        self.assertEqual(self.entity.source, "Home Assistant")
 
     def test_source_list_is_available_while_device_state_is_offline(self) -> None:
         """HA keeps source capabilities during a temporary state outage."""
@@ -126,7 +128,10 @@ class VoxOneMediaPlayerTest(unittest.IsolatedAsyncioTestCase):
         ):
             await self.entity.async_play_media("music", url)
 
-        self.client.send_command.assert_awaited_once_with("playurl", url)
+        self.client.send_command.assert_awaited_once_with(
+            "playurl",
+            f"{url}&title=Home%20Assistant&artist=announcement.mp3",
+        )
 
     async def test_play_media_resolves_media_source_to_reachable_url(self) -> None:
         """A media-source identifier is resolved and made reachable by VoxOne."""
@@ -154,7 +159,32 @@ class VoxOneMediaPlayerTest(unittest.IsolatedAsyncioTestCase):
             "media_player.voxone",
         )
         process_url.assert_called_once_with(self.entity.hass, resolved.url)
-        self.client.send_command.assert_awaited_once_with("playurl", reachable)
+        self.client.send_command.assert_awaited_once_with(
+            "playurl",
+            f"{reachable}&title=Home%20Assistant&artist=voice.mp3",
+        )
+
+    async def test_play_media_sends_encoded_tts_metadata(self) -> None:
+        """A TTS label is safely encoded as the temporary source artist."""
+        url = "http://ha.local/api/tts_proxy/voice.mp3"
+        with (
+            patch(
+                "custom_components.voxoneha.media_player.media_source.is_media_source_id",
+                return_value=False,
+            ),
+            patch(
+                "custom_components.voxoneha.media_player.async_process_play_media_url",
+                return_value=url,
+            ),
+        ):
+            await self.entity.async_play_media(
+                "music", url, extra={"title": "Drzwi są otwarte"}
+            )
+
+        self.client.send_command.assert_awaited_once_with(
+            "playurl",
+            f"{url}&title=Home%20Assistant&artist=Drzwi%20s%C4%85%20otwarte",
+        )
 
     async def test_play_media_rejects_unsupported_or_unsafe_url(self) -> None:
         """Unsupported schemes and command-breaking values never reach VoxOne."""

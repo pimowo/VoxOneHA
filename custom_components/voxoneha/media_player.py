@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from pathlib import PurePosixPath
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 from homeassistant.components import media_source
 from homeassistant.components.media_player import (
@@ -33,7 +34,46 @@ _SOURCE_TO_COMMAND = {
 _COMMAND_TO_SOURCE = {
     "radio": SOURCE_RADIO,
     "bt": SOURCE_BLUETOOTH,
+    "ha": "Home Assistant",
 }
+
+_PLAYURL_COMMAND_CAPACITY = 1536
+_METADATA_BYTE_CAPACITY = 127
+
+
+def _truncate_utf8(value: str, capacity: int = _METADATA_BYTE_CAPACITY) -> str:
+    """Fit metadata into the firmware field without splitting UTF-8."""
+    encoded = value.encode("utf-8")
+    if len(encoded) <= capacity:
+        return value
+    return encoded[:capacity].decode("utf-8", errors="ignore")
+
+
+def _playurl_metadata(play_url: str, kwargs: dict[str, Any]) -> tuple[str, str]:
+    """Build stable source and item labels for temporary HA playback."""
+    extra = kwargs.get("extra")
+    extra_values = extra if isinstance(extra, dict) else {}
+    artist = next(
+        (
+            value.strip()
+            for key in ("artist", "media_artist", "title", "media_title", "tts_text")
+            for value in (kwargs.get(key), extra_values.get(key))
+            if isinstance(value, str) and value.strip()
+        ),
+        "",
+    )
+    if not artist:
+        artist = unquote(PurePosixPath(urlsplit(play_url).path).name)
+    return "Home Assistant", _truncate_utf8(artist or "Media")
+
+
+def _playurl_command_value(play_url: str, kwargs: dict[str, Any]) -> str:
+    """Append percent-encoded metadata understood by VoxOne firmware."""
+    title, artist = _playurl_metadata(play_url, kwargs)
+    value = f"{play_url}&title={quote(title, safe='')}&artist={quote(artist, safe='')}"
+    if len(value.encode("ascii")) >= _PLAYURL_COMMAND_CAPACITY:
+        raise HomeAssistantError("VoxOne playurl command is too long")
+    return value
 
 
 async def async_setup_entry(
@@ -198,4 +238,6 @@ class VoxOneMediaPlayer(VoxOneEntity, MediaPlayerEntity):
         if invalid:
             raise HomeAssistantError("VoxOne requires a safe HTTP or HTTPS media URL")
 
-        await self.coordinator.client.send_command("playurl", play_url)
+        await self.coordinator.client.send_command(
+            "playurl", _playurl_command_value(play_url, kwargs)
+        )
